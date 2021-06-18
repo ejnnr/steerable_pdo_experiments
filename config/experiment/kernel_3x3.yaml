@@ -1,0 +1,23 @@
+# @package _global_
+defaults:
+  - override /model: e2cnn_exp
+  - override /data: mnist_rot
+
+data:
+  normalize: true
+  upsample: false
+  validation_size: 0
+trainer:
+  stochastic_weight_avg: false
+  max_epochs: 30
+model:
+  maximum_offset: 0
+  weight_decay: 1e-5
+  learning_rate: 0.05
+  fc_dropout: 0.5
+  lr_decay: 0.7
+  burn_in: 5
+  kernel_size: [3, 3, 3, 3, 3, 3, 3, 3]
+  channels: [16, 24, 24, 32, 32, 48, 48, 64]
+  padding: [0, 0, 1, 1, 1, 1, 1, 0]
+  pool_positions: [2, 4]

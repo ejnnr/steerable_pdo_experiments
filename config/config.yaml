@@ -1,0 +1,19 @@
+defaults:
+  - model: ???
+  - data: ???
+trainer:
+  terminate_on_nan: true
+  max_epochs: 30
+  stochastic_weight_avg: false
+dir:
+  log: logs
+  output_base: .
+  run: ${now:%Y-%m-%d_%H-%M-%S}
+seed: 0
+early_stopping:
+  enabled: false
+  patience: 6
+
+hydra:
+  run:
+    dir: ${dir.output_base}/${dir.log}/${dir.run}

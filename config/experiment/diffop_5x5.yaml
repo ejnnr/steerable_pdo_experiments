@@ -1,0 +1,24 @@
+# @package _global_
+defaults:
+  - override /model: diffop
+  - override /data: mnist_rot
+
+data:
+  normalize: true
+  upsample: false
+  validation_size: 0
+trainer:
+  stochastic_weight_avg: false
+  max_epochs: 30
+model:
+  maximum_offset: 0
+  maximum_order: 3
+  weight_decay: 1e-5
+  learning_rate: 0.05
+  fc_dropout: 0.5
+  lr_decay: 0.7
+  burn_in: 5
+  kernel_size: [5, 5, 5, 5, 5, 5]
+  channels: [16, 24, 32, 32, 48, 64]
+  padding: [1, 2, 2, 2, 2, 0]
+  pool_positions: [1, 2]

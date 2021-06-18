@@ -1,0 +1,9 @@
+_target_: diffop_experiments.EquivariantNetwork
+n_classes: 10
+learning_rate: 0.001
+weight_decay: 1e-7
+lr_decay: 0.8
+burn_in: 10
+fc_dropout: 0.2
+conv_dropout: 0
+scheduler: exponential

@@ -1,0 +1,8 @@
+defaults:
+  - base
+
+layer_types: kernel
+mask: false
+optimizer: sfcnn
+nonlinearity: elu
+fc_dropout: 0

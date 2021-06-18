@@ -1,0 +1,8 @@
+defaults:
+  - base
+
+layer_types: diffop
+init: delta
+mask: false
+optimizer: sfcnn
+nonlinearity: elu

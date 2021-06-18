@@ -1,0 +1,8 @@
+_target_: diffop_experiments.MNISTRotModule
+dir: data
+batch_size: 64
+validation_size: 2000
+num_workers: 0
+upsample: true
+normalize: true
+pad: false
