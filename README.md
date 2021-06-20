@@ -1,10 +1,11 @@
 # Steerable PDO Experiments
 
 ## Setup
-See `environment.yml` for the required Python packages.
-If you have `conda` set up, you may also run `./install.sh` to create
+If you have `conda` set up, you may run `./install.sh` to create
 and activate a conda environment for these experiments and install
-all required dependencies into it.
+all required dependencies into it. If you want to set up an environment
+manually, check `install.sh` and `environment.yml` to see which packages
+are needed.
 
 **Note:** If you want to recreate the figures from the paper, using
 `figures.py`, you also need to install `seaborn`.
