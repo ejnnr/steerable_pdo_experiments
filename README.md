@@ -1,4 +1,9 @@
 # Steerable PDO Experiments
+**[Library code](https://github.com/ejnnr/steerable_pdos)** | **[Paper](https://arxiv.org/abs/2106.10163)** | **[Original library](https://github.com/QUVA-Lab/e2cnn)**
+
+This repository contains the experiments for our paper on [steerable PDOs](https://arxiv.org/abs/2106.10163).
+It makes use of our [extension of the *e2cnn* library](https://github.com/ejnnr/steerable_pdos).
+Parts of the code are also reused from the [experiments code for the *e2cnn* paper](https://github.com/QUVA-Lab/e2cnn_experiments).
 
 ## Setup
 If you have `conda` set up, you may run `./install.sh` to create
@@ -90,3 +95,33 @@ commands for each model in `./run_stl.sh`.
 ## Figures
 You can run `python figures.py` to reproduce the figures from our paper. You will have
 to install `seaborn` first. The figures will be saved into the `fig` folder.
+
+## Cite
+
+The original *e2cnn* library and parts of the experiments code in this repository
+were developed as part of the
+[General E(2)-Equivariant Steerable CNNs](https://arxiv.org/abs/1911.08251) paper.
+The extension of the library to steerable PDOs and other parts of the experiment code
+were written for our [steerable PDO paper](https://arxiv.org/abs/2106.10163).
+Please cite these papers if you find the code in this repository useful for your own work:
+
+```
+@inproceedings{e2cnn,
+    title={{General E(2)-Equivariant Steerable CNNs}},
+    author={Weiler, Maurice and Cesa, Gabriele},
+    booktitle={Conference on Neural Information Processing Systems (NeurIPS)},
+    year={2019},
+}
+@misc{jenner2021steerable,
+    title={Steerable Partial Differential Operators for Equivariant Neural Networks}, 
+    author={Erik Jenner and Maurice Weiler},
+    year={2021},
+    eprint={2106.10163},
+    archivePrefix={arXiv},
+    primaryClass={cs.LG}
+}
+```
+
+## License
+
+All code in this repository is distributed under the BSD Clear license. See LICENSE file.
