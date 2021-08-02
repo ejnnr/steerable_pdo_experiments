@@ -54,7 +54,8 @@ def build_optimizer_sfcnn(model, lr, weight_decay):
     linearLayers = [m for m in model.modules() if isinstance(m, torch.nn.Linear)]
     convlayers = [m for m in model.modules() if isinstance(m, (
         torch.nn.Conv2d,
-        nn.R2Layer,
+        nn.R2Conv,
+        nn.R2Diffop,
     ))]
     weights_conv = [p for m in convlayers for n, p in m.named_parameters() if n.endswith('weights') or n.endswith("weight")]
     biases = [p for n, p in model.named_parameters() if n.endswith('bias')]

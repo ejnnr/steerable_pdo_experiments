@@ -161,7 +161,7 @@ class EquivariantNetwork(Network):
                  accuracy: int = None,
                  rbffd: bool = False,
                  smoothing: Union[float, List[float]] = None,
-                 restrict_kernel_size: bool = False,
+                 max_accuracy: int = None,
                  angle_offset: float = None,
                  normalize_basis: bool = True,
                  rotate_basis: bool = False,
@@ -207,7 +207,7 @@ class EquivariantNetwork(Network):
             accuracy=accuracy,
             rbffd=rbffd,
             smoothing=smoothing,
-            restrict_kernel_size=restrict_kernel_size,
+            max_accuracy=max_accuracy,
             angle_offset=angle_offset,
             normalize_basis=normalize_basis,
             rotate_basis=rotate_basis,
@@ -365,16 +365,16 @@ class EquivariantNetwork(Network):
             init = self.hparams.init
 
         if method == "kernel":
-            return nn.R2Conv(
+            layer = nn.R2Conv(
                 in_type, out_type,
                 kernel_size=kernel_size,
                 padding=padding,
                 bias=bias,
                 maximum_offset=self.hparams.maximum_offset,
-                init=init,
+                initialize=(init == "he"),
             )
         elif method == "diffop":
-            return nn.R2Diffop(
+            layer = nn.R2Diffop(
                 in_type,
                 out_type,
                 accuracy=self.hparams.accuracy,
@@ -387,16 +387,22 @@ class EquivariantNetwork(Network):
                 rbffd=self.hparams.rbffd,
                 kernel_size=kernel_size,
                 padding=padding,
-                init=init,
+                initialize=(init == "he"),
                 bias=bias,
                 smoothing=smoothing,
-                restrict_kernel_size=self.hparams.restrict_kernel_size,
+                max_accuracy=self.hparams.max_accuracy,
                 normalize_basis=self.hparams.normalize_basis,
                 angle_offset=self.hparams.angle_offset,
-                rotate90=self.hparams.rotate_basis,
             )
         else:
             raise ValueError(f"Method must be 'kernel' or 'diffop', got {method}")
+        
+        if init == "delta":
+            nn.init.deltaorthonormal_init(layer.weights.data, layer.basisexpansion)
+        elif not (init == "he" or init is None):
+            raise ValueError("Init must be 'he', 'delta' or None.")
+        
+        return layer
 
     def forward(self, x):
         x = nn.GeometricTensor(x, self.input_type)
