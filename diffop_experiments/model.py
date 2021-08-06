@@ -576,10 +576,13 @@ class EquivariantNetwork(Network):
         else:
             raise ValueError(f"Method must be 'kernel' or 'diffop', got {method}")
         
-        if init == "delta":
-            nn.init.deltaorthonormal_init(layer.weights.data, layer.basisexpansion)
-        elif not (init == "he" or init is None):
+
+        if init not in {"he", "delta", None}:
             raise ValueError("Init must be 'he', 'delta' or None.")
+        # for the PDO-eConv basis, we always use the default init
+        # because it's the only one that's supported
+        if init == "delta" and not self.hparams.special_regular_basis:
+            nn.init.deltaorthonormal_init(layer.weights.data, layer.basisexpansion)
         
         return layer
 
