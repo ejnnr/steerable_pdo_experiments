@@ -64,6 +64,17 @@ def cli_main(cfg: DictConfig):
         cfg.trainer.weights_summary = "full"
         cfg.data.batch_size = 2
 
+    if cfg.get("pdo_econv", False):
+        cfg.model.maximum_power = 0
+        cfg.model.special_regular_basis = True
+        cfg.model.maximum_partial_order = 2
+        cfg.model.maximum_order = None
+        cfg.model.angle_offset = np.pi / 8
+        cfg.model.normalize_basis = False
+        cfg.model.max_accuracy = 2
+        if any(size != 5 for size in cfg.model.kernel_size):
+            raise ValueError("PDO-eConv stencils are currently only implemented for 5x5 kernels")
+
     pl.seed_everything(cfg.seed)
 
     cfg.data.dir = hydra.utils.to_absolute_path(cfg.data.dir)
