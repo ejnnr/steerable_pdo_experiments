@@ -1,3 +1,4 @@
+import warnings
 import logging
 import sys
 import itertools
@@ -19,6 +20,15 @@ from e2cnn import nn
 
 from diffop_experiments import MNISTRotModule
 
+warnings.filterwarnings("ignore",
+    "indexing with dtype torch.uint8 is now deprecated, "
+    "please use a dtype torch.bool instead.")
+
+# This warning is triggered internally in pytorch 1.9.0:
+# https://github.com/pytorch/pytorch/issues/54846
+# Should be fixed in future releases
+warnings.filterwarnings("ignore",
+    "Named tensors and all their associated APIs are an experimental feature")
 
 @hydra.main(config_path="config", config_name="config")
 def cli_main(cfg: DictConfig):
@@ -42,6 +52,9 @@ def cli_main(cfg: DictConfig):
         cfg.trainer.weights_summary = "full"
         # speed up the debug run by using a tiny batch size
         cfg.data.batch_size = 2
+        # mostly to suppress a warning that there are fewer steps
+        # than the log period
+        cfg.trainer.log_every_n_steps = 1
 
     if cfg.get("full_debug", False):
         cfg.trainer.fast_dev_run = False

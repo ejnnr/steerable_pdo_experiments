@@ -4,9 +4,10 @@ from typing import Dict, List, Mapping, Union
 import torch
 import torch.nn.functional as F
 import pytorch_lightning as pl
+from torchmetrics.classification import Accuracy
 import numpy as np
 
-from e2cnn import gspaces, nn
+from e2cnn import gspaces, nn, group
 
 from .utils import build_optimizer_sfcnn
 
@@ -37,9 +38,9 @@ class Network(pl.LightningModule, ABC):
 
         self.save_hyperparameters()
 
-        self.train_error = pl.metrics.Accuracy()
-        self.valid_error = pl.metrics.Accuracy()
-        self.test_error = pl.metrics.Accuracy()
+        self.train_error = Accuracy()
+        self.valid_error = Accuracy()
+        self.test_error = Accuracy()
 
     @abstractmethod
     def forward(x):
@@ -244,6 +245,8 @@ class EquivariantNetwork(Network):
             self.r2_act = gspaces.FlipRot2dOnR2(N=group_order)
         elif group_order == 1:
             self.r2_act = gspaces.TrivialOnR2()
+        elif group_order < 0:
+            self.r2_act = gspaces.Rot2dOnR2(N=-1, maximum_frequency=-group_order)
         else:
             self.r2_act = gspaces.Rot2dOnR2(N=group_order)
 
@@ -256,73 +259,115 @@ class EquivariantNetwork(Network):
 
         layers = []
         
-        for i in range(len(channels)):
-            if fix_param:
-                # to keep number of parameters more or less constant when changing groups
-                # (more precisely, we try to keep them close to the number of parameters in the original SFCNN)
-                t = self.r2_act.fibergroup.order() / 16
-                C = int(round(channels[i] / np.sqrt(t)))
-            else:
-                C = channels[i]
+        if group_order < 0:
+            for i in range(len(channels)):
+                last_layer = (i == len(channels) - 1)
+                # whether to pool: either in the middle of the
+                # network if specified via pool_positions,
+                # or after the final layer, if no final_size
+                # is given.
+                pool = False
+                if i in pool_positions:
+                    pool = True
+                if last_layer and final_size is None:
+                    pool = True
+                    final_size = 1
+
+                new_layers = self._build_layer_gated_normpool_shared(
+                    in_type,
+                    channels[i],
+                    kernel_size[i],
+                    padding[i],
+                    smoothing[i],
+                    layer_types[i],
+                    bias,
+                    # we use the absolute value of the group order
+                    # to specify the maximum irrep frequency
+                    -group_order,
+                    pool,
+                    # whether to apply an invariant mapping: we want this
+                    # after the final layer
+                    last_layer,
+                    fix_param,
+                    i,
+                )
+                layers.append(nn.SequentialModule(*new_layers))
+                in_type = layers[-1].out_type
+
+        else:
+            for i in range(len(channels)):
+                if fix_param:
+                    # to keep number of parameters more or less constant when changing groups
+                    # (more precisely, we try to keep them close to the number of parameters in the original SFCNN)
+                    t = self.r2_act.fibergroup.order() / 16
+                    C = int(round(channels[i] / np.sqrt(t)))
+                else:
+                    C = channels[i]
+                
+                if group_order == 1 and not flip:
+                    repr = self.r2_act.trivial_repr
+                    out_type = nn.FieldType(self.r2_act, C * [repr])
+                elif not self.hparams.quotient:
+                    repr = self.r2_act.regular_repr
+                    out_type = nn.FieldType(self.r2_act, C * [repr])
+                else:
+                    assert self.hparams.group_order == 16
+                    assert not self.hparams.flip
+                    repr = [self.r2_act.regular_repr] * 5
+                    repr += [self.r2_act.quotient_repr(2)] * 2
+                    repr += [self.r2_act.quotient_repr(4)] * 2
+                    repr += [self.r2_act.trivial_repr] * 4
+
+                    C /= sum([r.size for r in repr]) / self.r2_act.fibergroup.order()
+                    C = int(round(C))
+                
+                    out_type = nn.FieldType(self.r2_act, repr * C).sorted()
+                block = []
+                if i == 0 and mask:
+                    block.append(nn.MaskModule(in_type, self.hparams.input_size, margin=1))
+                block.append(self._create_layer(
+                    layer_types[i],
+                    in_type,
+                    out_type,
+                    kernel_size=kernel_size[i],
+                    padding=padding[i],
+                    smoothing=smoothing[i],
+                    bias=bias,
+                ))
+                if i + 1 == self.hparams.restriction_layer:
+                    assert self.hparams.flip, "Restriction is only supported from D_N to C_N"
+                    block.append(nn.RestrictionModule(out_type, (None, self.hparams.group_order)))
+                    block.append(nn.DisentangleModule(block[-1].out_type))
+                    out_type = block[-1].out_type
+                    self.r2_act, _, _ = self.r2_act.restrict((None, self.hparams.group_order))
+                block.append(nn.InnerBatchNorm(out_type, momentum=batch_norm_momentum, eps=batch_norm_epsilon))
+                block.append(create_nonlinearity(out_type))
+                # We only use this to replicate the PDO-eConv architecture,
+                # other architectures don't use dropout after the convolutional layers.
+                # That architecture applies an element-wise dropout after the activation
+                # function:
+                # https://github.com/shenzy08/PDO-eConvs/blob/9a3a171af43a26c3225532de1a2f4f0b9408f108/mnist.py#L73
+                # So that's what we do as well:
+                if self.hparams.conv_dropout > 0 and i not in pool_positions:
+                    block.append(nn.PointwiseDropout(out_type, p=self.hparams.conv_dropout))
+                layers.append(nn.SequentialModule(*block))
+
+                in_type = out_type
+
+                if i in pool_positions:
+                    layers.append(create_pooling(out_type))
             
-            if group_order == 1 and not flip:
-                repr = self.r2_act.trivial_repr
-                out_type = nn.FieldType(self.r2_act, C * [repr])
-            elif not self.hparams.quotient:
-                repr = self.r2_act.regular_repr
-                out_type = nn.FieldType(self.r2_act, C * [repr])
-            else:
-                assert self.hparams.group_order == 16
-                assert not self.hparams.flip
-                repr = [self.r2_act.regular_repr] * 5
-                repr += [self.r2_act.quotient_repr(2)] * 2
-                repr += [self.r2_act.quotient_repr(4)] * 2
-                repr += [self.r2_act.trivial_repr] * 4
+            if final_size is None:
+                layers.append(nn.GroupPooling(in_type))
+                out_type = layers[-1].out_type
 
-                C /= sum([r.size for r in repr]) / self.r2_act.fibergroup.order()
-                C = int(round(C))
-            
-                out_type = nn.FieldType(self.r2_act, repr * C).sorted()
-            block = []
-            if i == 0 and mask:
-                block.append(nn.MaskModule(in_type, self.hparams.input_size, margin=1))
-            block.append(self._create_layer(
-                layer_types[i],
-                in_type,
-                out_type,
-                kernel_size=kernel_size[i],
-                padding=padding[i],
-                smoothing=smoothing[i],
-                bias=bias,
-            ))
-            if i + 1 == self.hparams.restriction_layer:
-                assert self.hparams.flip, "Restriction is only supported from D_N to C_N"
-                block.append(nn.RestrictionModule(out_type, (None, self.hparams.group_order)))
-                block.append(nn.DisentangleModule(block[-1].out_type))
-                out_type = block[-1].out_type
-                self.r2_act, _, _ = self.r2_act.restrict((None, self.hparams.group_order))
-            block.append(nn.InnerBatchNorm(out_type, momentum=batch_norm_momentum, eps=batch_norm_epsilon))
-            block.append(create_nonlinearity(out_type))
-            if self.hparams.conv_dropout > 0 and i not in pool_positions:
-                block.append(nn.PointwiseDropout(out_type, p=self.hparams.conv_dropout))
-            layers.append(nn.SequentialModule(*block))
-
-            in_type = out_type
-
-            if i in pool_positions:
-                layers.append(create_pooling(out_type))
-        
-        if final_size is None:
-            layers.append(nn.GroupPooling(in_type))
-            out_type = layers[-1].out_type
-
-            # pool spatial dimensions to scalar
-            if pooling == "max":
-                layers.append(nn.PointwiseAdaptiveMaxPool(out_type, 1))
-            elif pooling == "avg":
-                layers.append(nn.PointwiseAdaptiveAvgPool(out_type, 1))
-            
-            final_size = 1
+                # pool spatial dimensions to scalar
+                if pooling == "max":
+                    layers.append(nn.PointwiseAdaptiveMaxPool(out_type, 1))
+                elif pooling == "avg":
+                    layers.append(nn.PointwiseAdaptiveAvgPool(out_type, 1))
+                
+                final_size = 1
 
         self.equi_net = nn.SequentialModule(*layers)
         # number of output channels
@@ -351,6 +396,140 @@ class EquivariantNetwork(Network):
 
         self.fully_net = torch.nn.Sequential(*fc_layers)
 
+
+    def _build_layer_gated_normpool_shared(
+        self,
+        r1: nn.FieldType,
+        C: int,
+        kernel_size: int,
+        padding: int,
+        smoothing: float,
+        method: str,
+        bias: bool,
+        maximum_frequency: int,
+        pool: bool,
+        invariant_map: bool,
+        fix_param: bool,
+        layer_index: int,
+    ):
+        # Adapted from https://github.com/QUVA-Lab/e2cnn_experiments/blob/master/experiments/models/exp_e2sfcnn.py#L1358
+
+        ###################################################################################
+        # 1 gate per field containing all irreps except trivial; ELU on trivial irreps
+        ###################################################################################
+
+        gc = r1.gspace
+
+        irreps = []
+        for n, irr in gc.fibergroup.irreps.items():
+            if (
+                n != gc.trivial_repr.name and
+                # we check the frequency to be sure; the issue
+                # is that group.irreps might return more irreps
+                # than we had in mind if they've been built somewhere
+                # else
+                irr.attributes["frequency"] <= maximum_frequency
+            ):
+                irreps += [irr] * int(irr.size // irr.sum_of_squares_constituents)
+        irreps = list(irreps)
+
+        if fix_param and not invariant_map and layer_index > 1:
+            # to keep number of parameters more or less constant when changing groups
+            # (more precisely, we try to keep them close to the number of parameters in the original SFCNN)
+            r_in = nn.FieldType(gc, [gc.trivial_repr] * 2 + irreps)
+            r_out = nn.FieldType(gc, [gc.trivial_repr] + irreps)
+        
+            tmp_cl = self._create_layer(
+                method,
+                r_in,
+                r_out,
+                kernel_size,
+                padding,
+                smoothing,
+                bias,
+            )
+        
+            t = tmp_cl.basisexpansion.dimension()
+        
+            t /= 16 * kernel_size ** 2 * 3 / 4
+        
+            C = int(round(C / np.sqrt(t)))
+
+        elif invariant_map:
+            # in order to preserve the same number of output channels
+            size = sum(int(irr.size // irr.sum_of_squares_constituents) for irr in irreps)
+            C = int(round(C / size))
+
+        layers = []
+
+        irreps_field = group.directsum(list(irreps), name="irreps")
+
+        trivials = nn.FieldType(gc, [gc.trivial_repr] * C)
+        gates = nn.FieldType(gc, [gc.trivial_repr] * C)
+        gated = nn.FieldType(gc, [irreps_field] * C).sorted()
+        gate = gates + gated
+
+        r2 = trivials + gate
+
+        cl = self._create_layer(
+            method,
+            r1,
+            r2,
+            kernel_size,
+            padding,
+            smoothing,
+            bias,
+        )
+        layers.append(cl)
+
+        labels = ["trivial"] * (len(trivials) + len(gates)) + ["gated"] * len(gated)
+
+        modules = [
+            (nn.InnerBatchNorm(trivials + gates), "trivial"),
+            (nn.NormBatchNorm(gated), "gated")
+        ]
+        bn = nn.MultipleModule(layers[-1].out_type, labels, modules)
+        layers.append(bn)
+
+        labels = ["trivial"] * len(trivials) + ["gate"] * len(gate)
+        modules = [
+            (nn.ELU(trivials), "trivial"),
+            (nn.GatedNonLinearity1(gate), "gate")
+        ]
+        nnl = nn.MultipleModule(layers[-1].out_type, labels, modules)
+        layers.append(nnl)
+
+        r3 = layers[-1].out_type
+        labels = ["trivial" if r.is_trivial() else "others" for r in r3]
+        r3 = r3.group_by_labels(labels)
+        trivials = r3["trivial"]
+        others = r3["others"]
+
+        for r in trivials:
+            r.supported_nonlinearities.add("pointwise")
+
+        if invariant_map:
+            modules = [
+                (nn.IdentityModule(trivials), "trivial"),
+                (nn.NormPool(others), "others")
+            ]
+            pl = nn.MultipleModule(layers[-1].out_type, labels, modules)
+            layers.append(pl)
+        
+            if pool:
+                # after the invariant map, we want to pool to a single pixel
+                pl = nn.PointwiseAdaptiveMaxPool(layers[-1].out_type, 1)
+                layers.append(pl)
+        elif pool:
+            modules = [
+                (nn.PointwiseMaxPool(trivials, kernel_size=2), "trivial"),
+                (nn.NormMaxPool(others, kernel_size=2), "others")
+            ]
+            pl = nn.MultipleModule(layers[-1].out_type, labels, modules)
+            layers.append(pl)
+
+        return layers
+    
     def _create_layer(self,
                       method: str,
                       in_type: nn.FieldType,

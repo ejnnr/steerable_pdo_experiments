@@ -1,8 +1,12 @@
 #!/bin/bash
 
-conda env create -f environment.yml
-conda activate steerable_pdo_experiments
-pip install git+git://github.com/treverhines/RBF.git
-pip install torch-scatter torch-sparse -f https://pytorch-geometric.com/whl/torch-1.8.0+cu102.html
-pip install git+git://github.com/ejnnr/steerable_pdos.git@experiments
-pip install -e .
+set -e
+
+poetry install
+# There are some issues installing RBF with poetry
+# caused by the fact that it uses cython during installation.
+# We circumvent that by installing it manually afterward.
+poetry run pip install git+https://github.com/ejnnr/RBF
+# Finally, install the version of the e2cnn library needed
+# for these experiments
+poetry run pip install git+https://github.com/ejnnr/steerable_pdos@pdo_econv
