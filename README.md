@@ -6,14 +6,25 @@ It makes use of our [extension of the *e2cnn* library](https://github.com/ejnnr/
 Parts of the code are also reused from the [experiments code for the *e2cnn* paper](https://github.com/QUVA-Lab/e2cnn_experiments).
 
 ## Setup
-If you have `conda` set up, you may run `./install.sh` to create
-and activate a conda environment for these experiments and install
-all required dependencies into it. If you want to set up an environment
-manually, check `install.sh` and `environment.yml` to see which packages
-are needed.
+We use [`poetry`](https://python-poetry.org/) to manage package dependencies
+because this makes it easy to lock the precise package versions with which
+we tested the code. If you have `poetry` installed, just run `./install.sh`,
+which will create a new virtual environment and install all dependencies
+into this environment. You can activate it with `poetry shell`.
 
 **Note:** If you want to recreate the figures from the paper, using
-`figures.py`, you also need to install `seaborn`.
+`figures.py`, you also need to install `seaborn`, which is not included in
+the `poetry` environment.
+
+Of course you don't need to use `poetry`, you can also install the requirements
+yourself using `pip` or `conda`. You can find a list of required packages
+in `pyproject.toml`. In addition to the once listed there, you will need
+to install the [`RBF`](https://github.com/treverhines/RBF) package.
+Finally, run
+```
+pip install git+https://github.com/ejnnr/steerable_pdos@pdo_econv
+```
+to install the version of the *e2cnn* library that we need for these experiments.
 
 ## Running experiments
 ### MNIST-rot
@@ -37,20 +48,13 @@ To reproduce the restriction models (which start with D_N equivariance and restr
 that number). For the quotient experiments, use `+model.quotient=true`.
 
 Finally, our code also allows you to exactly imitate the [PDO-eConv](https://arxiv.org/abs/2007.10408) basis.
-To do so, you will need the following options:
+To do so, add the `model.pdo_econv` option, i.e.
 ```
-+model.maximum_power=0 \
-+model.special_regular_basis=true \
-+model.maximum_partial_order=2 \
-model.maximum_order=null \
-+model.angle_offset=0.39269908169872414 \
-+model.normalize_basis=0 \
-+model.rotate_basis=1 \
+python main.py +experiment=diffop_5x5 +model.pdo_econv=1
 ```
-(the backslashes are to escape the linebreaks, all options form a single line).
 You can combine this with `+model.smoothing=...` to use Gaussian discretization.
 But in general, the PDO-eConv basis is less flexible and thus cannot be combined
-with all of the options described above.
+with all of the options described above. It also currently only supports 5x5 kernels.
 
 `main.py` has many other options, so there are many architecture and hyperparameter
 choices that you can easily modify. For example, the following command illustrates
@@ -68,7 +72,7 @@ python main.py +experiment=diffop_5x5 \
     model.channels=\[20, 30, 40, 40, 50, 70\]
 ```
 In the `config/` directory, you can see some more option, as well as even more
-in `diffop_experiments/model.py`. Don't hesitate to [contact me](mailto:erik.jenner99@gmail.com)
+in `diffop_experiments/model.py`. Don't hesitate to [contact me](mailto:erik@ejenner.com)
 or file a Github issue if you'd like to try something not mentioned here, maybe it's
 already implemented. 
 
