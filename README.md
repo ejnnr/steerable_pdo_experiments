@@ -46,6 +46,9 @@ python main.py +experiment=diffop_5x5 +model.smoothing=1.3
 To reproduce the restriction models (which start with D_N equivariance and restrict to C_N), use
 `+model.flip=true +model.restriction_layer=6` (this restricts for the 6th layer, you can change
 that number). For the quotient experiments, use `+model.quotient=true`.
+To use SO(2) irreps instead of regular representations, use `+model.group_order=-N`
+where `N` is the maximum irrep frequency you want to use (`N = 3` is reasonable).
+Note the minus sign; without it, this would use `C_N` as the symmetry group.
 
 Finally, our code also allows you to exactly imitate the [PDO-eConv](https://arxiv.org/abs/2007.10408) basis.
 To do so, add the `model.pdo_econv` option, i.e.
