@@ -13,7 +13,7 @@ import numpy as np
 
 import torch
 import pytorch_lightning as pl
-from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
 
 from e2cnn import nn
@@ -135,7 +135,8 @@ def cli_main(cfg: DictConfig):
     # ------------
     callbacks = []
 
-    if cfg.get("log", True):
+    log_mode = cfg.get("log", "wandb")
+    if log_mode == "tb":
         # We want to always put tensorboard logs into the CWD,
         # no matter what cfg.dir.output_base is. The reason is that
         # on clusters, we use the scratch disk to save checkpoints,
@@ -145,9 +146,19 @@ def cli_main(cfg: DictConfig):
         # name and version should be empty; the path above is already a unique
         # path for this specific run, handled by Hydra
         logger = TensorBoardLogger(tb_path, name="", version="")
-        callbacks.append(LearningRateMonitor())
-    else:
+    elif log_mode == "wandb":
+        logger = WandbLogger(
+            name=cfg.get("name", None),
+            project="steerable_pdos",
+            group=cfg.get("group", None),
+        )
+    elif not log_mode:
         logger = None
+    else:
+        raise ValueError("log_mode must be 'tb', 'wandb' or falsy")
+
+    if log_mode:
+        callbacks.append(LearningRateMonitor())
 
     if cfg.data.validation_size:
         # checkpointing only makes sense if we use a validation set
